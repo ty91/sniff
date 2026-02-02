@@ -24,9 +24,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
 );
 
 CREATE TABLE IF NOT EXISTS embeddings (
-  note_id TEXT PRIMARY KEY,
+  note_id TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,
   vector BLOB NOT NULL,
-  dim INTEGER NOT NULL
+  dim INTEGER NOT NULL,
+  PRIMARY KEY (note_id, chunk_index)
 );
 
 CREATE TABLE IF NOT EXISTS sync_state (
@@ -34,6 +36,35 @@ CREATE TABLE IF NOT EXISTS sync_state (
   value TEXT NOT NULL
 );
 `;
+
+function migrateEmbeddings(sqlite: Database.Database) {
+  const columns = sqlite.prepare("PRAGMA table_info(embeddings)").all() as Array<{
+    name: string;
+  }>;
+  if (columns.length === 0) return;
+  const hasChunkIndex = columns.some((column) => column.name === "chunk_index");
+  if (hasChunkIndex) return;
+
+  const migrate = sqlite.transaction(() => {
+    sqlite.exec(`
+      CREATE TABLE embeddings_v2 (
+        note_id TEXT NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        vector BLOB NOT NULL,
+        dim INTEGER NOT NULL,
+        PRIMARY KEY (note_id, chunk_index)
+      );
+
+      INSERT INTO embeddings_v2(note_id, chunk_index, vector, dim)
+      SELECT note_id, 0 as chunk_index, vector, dim FROM embeddings;
+
+      DROP TABLE embeddings;
+      ALTER TABLE embeddings_v2 RENAME TO embeddings;
+    `);
+  });
+
+  migrate();
+}
 
 export function createAppDb(dbPath: string): AppDb {
   const dir = path.dirname(dbPath);
@@ -44,6 +75,7 @@ export function createAppDb(dbPath: string): AppDb {
   const sqlite = new Database(dbPath);
   sqlite.pragma("journal_mode = WAL");
   sqlite.exec(SCHEMA_SQL);
+  migrateEmbeddings(sqlite);
 
   const orm = drizzle(sqlite);
   return { sqlite, orm };

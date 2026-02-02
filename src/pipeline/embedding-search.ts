@@ -1,10 +1,12 @@
 import Database from "better-sqlite3";
 import { getLlama } from "node-llama-cpp";
-import type { Llama, LlamaModel, LlamaEmbeddingContext } from "node-llama-cpp";
+import type { Llama, LlamaModel, LlamaEmbeddingContext, Token } from "node-llama-cpp";
 import { RankedItem } from "./bm25-search.js";
 
 export type EmbeddingModel = {
-  embed: (text: string) => Promise<Float32Array>;
+  embed: (input: string | Token[]) => Promise<Float32Array>;
+  tokenize: (text: string) => Token[];
+  trainContextSize: number;
   dispose: () => Promise<void>;
 };
 
@@ -32,10 +34,12 @@ export async function createEmbeddingModel(modelPath: string): Promise<Embedding
   const ctx: LlamaEmbeddingContext = await model.createEmbeddingContext();
 
   return {
-    embed: async (text: string) => {
-      const embedding = await ctx.getEmbeddingFor(text);
+    embed: async (input: string | Token[]) => {
+      const embedding = await ctx.getEmbeddingFor(input);
       return normalizeVector(Float32Array.from(embedding.vector));
     },
+    tokenize: (text: string) => model.tokenize(text),
+    trainContextSize: model.trainContextSize,
     dispose: async () => {
       await ctx.dispose();
       await model.dispose();
@@ -53,7 +57,7 @@ export async function embeddingSearch(
   const queryVector = await model.embed(query);
   const rows = sqlite.prepare("SELECT note_id as id, vector FROM embeddings").all();
 
-  const scored: RankedItem[] = [];
+  const scoredById = new Map<string, number>();
   for (const row of rows) {
     const vector = bufferToFloat32(row.vector);
     if (vector.length !== queryVector.length) continue;
@@ -62,8 +66,17 @@ export async function embeddingSearch(
     for (let i = 0; i < vector.length; i += 1) {
       dot += vector[i] * queryVector[i];
     }
-    scored.push({ id: String(row.id), score: dot });
+    const id = String(row.id);
+    const prev = scoredById.get(id);
+    if (prev === undefined || dot > prev) {
+      scoredById.set(id, dot);
+    }
   }
+
+  const scored: RankedItem[] = Array.from(scoredById.entries()).map(([id, score]) => ({
+    id,
+    score,
+  }));
 
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit);

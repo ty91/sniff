@@ -20,6 +20,8 @@ export type SniffConfig = {
   rerankTopK: number;
   topN: number;
   modelsDir: string;
+  embeddingChunkSize: number;
+  embeddingChunkOverlap: number;
 };
 
 const DEFAULT_CONFIG = {
@@ -33,6 +35,8 @@ const DEFAULT_CONFIG = {
   rrfK: 60,
   rerankTopK: 50,
   topN: 10,
+  embeddingChunkSize: 512,
+  embeddingChunkOverlap: 64,
 };
 
 function readJson(filePath: string) {
@@ -61,6 +65,8 @@ export function loadConfig(configPath = DEFAULT_CONFIG_PATH): SniffConfig {
       rerankTopK: DEFAULT_CONFIG.rerankTopK,
       topN: DEFAULT_CONFIG.topN,
       modelsDir: DEFAULT_CONFIG.modelsDir,
+      embeddingChunkSize: DEFAULT_CONFIG.embeddingChunkSize,
+      embeddingChunkOverlap: DEFAULT_CONFIG.embeddingChunkOverlap,
     };
   }
 
@@ -87,5 +93,9 @@ export function loadConfig(configPath = DEFAULT_CONFIG_PATH): SniffConfig {
     rerankTopK: typeof data.rerankTopK === "number" ? data.rerankTopK : 50,
     topN: typeof data.topN === "number" ? data.topN : 10,
     modelsDir: data.modelsDir ? path.resolve(data.modelsDir) : DEFAULT_MODELS_DIR,
+    embeddingChunkSize:
+      typeof data.embeddingChunkSize === "number" ? data.embeddingChunkSize : 512,
+    embeddingChunkOverlap:
+      typeof data.embeddingChunkOverlap === "number" ? data.embeddingChunkOverlap : 64,
   };
 }
