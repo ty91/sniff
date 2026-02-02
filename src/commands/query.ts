@@ -6,6 +6,7 @@ import { createEmbeddingModel, embeddingSearch } from "../pipeline/embedding-sea
 import { rrfMixer } from "../pipeline/rrf-mixer.js";
 import { createReranker, rerankCandidates, type RerankCandidate } from "../pipeline/reranker.js";
 import { selectTopN } from "../pipeline/topn.js";
+import { resolveModelPaths } from "../models/resolve-models.js";
 
 function fetchNotesByIds(sqlite: ReturnType<typeof createAppDb>["sqlite"], ids: string[]) {
   if (ids.length === 0) return [];
@@ -29,6 +30,7 @@ export function registerQueryCommand(program: Command) {
     .description("Query local RAG index")
     .action(async (query: string, options: { output: string; topN?: string }) => {
       const config = loadConfig();
+      const resolvedModels = await resolveModelPaths(config);
       const { sqlite } = createAppDb(config.dbPath);
 
       try {
@@ -38,7 +40,7 @@ export function registerQueryCommand(program: Command) {
 
         const bm25Results = bm25Search(sqlite, query, bm25Limit);
 
-        const embedder = await createEmbeddingModel(config.models.embeddingPath);
+        const embedder = await createEmbeddingModel(resolvedModels.embeddingPath);
         let embeddingResults: { id: string; score: number }[] = [];
         try {
           embeddingResults = await embeddingSearch(sqlite, query, embedder, embedLimit);
@@ -59,7 +61,7 @@ export function registerQueryCommand(program: Command) {
           })
           .filter(Boolean) as RerankCandidate[];
 
-        const reranker = await createReranker(config.models.rerankerPath);
+        const reranker = await createReranker(resolvedModels.rerankerPath);
         let reranked: RerankCandidate[] = [];
         try {
           reranked = await rerankCandidates(reranker, query, candidates);

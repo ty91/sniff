@@ -5,6 +5,7 @@ import { readBearNotes } from "../bear/bear-reader.js";
 import { hashContent } from "../utils/hash.js";
 import { ensureSniffDirs } from "../utils/paths.js";
 import { createEmbeddingModel } from "../pipeline/embedding-search.js";
+import { resolveModelPaths } from "../models/resolve-models.js";
 
 function getLastSyncAt(sqlite: ReturnType<typeof createAppDb>["sqlite"]) {
   const row = sqlite
@@ -30,6 +31,7 @@ export function registerSyncCommand(program: Command) {
     .action(async () => {
       ensureSniffDirs();
       const config = loadConfig();
+      const resolvedModels = await resolveModelPaths(config);
       const { sqlite } = createAppDb(config.dbPath);
 
       try {
@@ -41,7 +43,7 @@ export function registerSyncCommand(program: Command) {
           existingRows.map((row: any) => [String(row.id), String(row.hash)])
         );
 
-        const embedder = await createEmbeddingModel(config.models.embeddingPath);
+        const embedder = await createEmbeddingModel(resolvedModels.embeddingPath);
         let updatedCount = 0;
         let latestTimestamp = lastSyncAt ?? 0;
 
