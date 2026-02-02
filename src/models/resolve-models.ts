@@ -73,3 +73,21 @@ export async function resolveModelPaths(config: SniffConfig): Promise<ResolvedMo
 
   return { embeddingPath, rerankerPath };
 }
+
+export async function ensureFirstRunDownloads(config: SniffConfig): Promise<void> {
+  if (!config.models.embeddingPath && config.models.embeddingUri) {
+    await ensureModelFile({
+      uri: config.models.embeddingUri,
+      dirPath: config.modelsDir,
+      label: "embedding",
+    });
+  }
+
+  if (!config.models.rerankerPath && config.models.rerankerUri) {
+    await ensureModelFile({
+      uri: config.models.rerankerUri,
+      dirPath: config.modelsDir,
+      label: "reranker",
+    });
+  }
+}

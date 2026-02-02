@@ -27,8 +27,8 @@ const DEFAULT_CONFIG = {
   dbPath: DEFAULT_DB_PATH,
   modelsDir: DEFAULT_MODELS_DIR,
   models: {
-    embeddingUri: "",
-    rerankerUri: "",
+    embeddingUri: "hf:ggml-org/embeddinggemma-300m-qat-q8_0-GGUF",
+    rerankerUri: "hf:ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/qwen3-reranker-0.6b-q8_0.gguf",
   },
   rrfK: 60,
   rerankTopK: 50,
@@ -48,7 +48,20 @@ function writeJson(filePath: string, data: unknown) {
 export function loadConfig(configPath = DEFAULT_CONFIG_PATH): SniffConfig {
   if (!fs.existsSync(configPath)) {
     writeJson(configPath, DEFAULT_CONFIG);
-    throw new Error(`config created at ${configPath}. Fill models.embeddingUri / models.rerankerUri and retry.`);
+    return {
+      bearDbPath: DEFAULT_BEAR_DB_PATH,
+      dbPath: DEFAULT_DB_PATH,
+      models: {
+        embeddingPath: undefined,
+        rerankerPath: undefined,
+        embeddingUri: DEFAULT_CONFIG.models.embeddingUri,
+        rerankerUri: DEFAULT_CONFIG.models.rerankerUri,
+      },
+      rrfK: DEFAULT_CONFIG.rrfK,
+      rerankTopK: DEFAULT_CONFIG.rerankTopK,
+      topN: DEFAULT_CONFIG.topN,
+      modelsDir: DEFAULT_CONFIG.modelsDir,
+    };
   }
 
   const data = readJson(configPath);
