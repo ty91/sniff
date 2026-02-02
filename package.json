@@ -1,0 +1,41 @@
+{
+  "name": "sniff",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/cli.js",
+  "scripts": {
+    "build": "tsup src/cli.ts --format esm --sourcemap",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.27.0",
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "commander": "^14.0.3",
+    "drizzle-orm": "^0.45.1",
+    "node-llama-cpp": "^3.15.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.2.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "type": "module",
+  "bin": {
+    "sniff": "dist/cli.js"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "node-llama-cpp"
+    ]
+  }
+}
