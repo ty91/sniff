@@ -5,7 +5,7 @@ import { readBearNotes } from "../bear/bear-reader.js";
 import { hashContent } from "../utils/hash.js";
 import { ensureSniffDirs } from "../utils/paths.js";
 import { createEmbeddingModel } from "../pipeline/embedding-search.js";
-import { resolveModelPaths } from "../models/resolve-models.js";
+import { resolveEmbeddingPath } from "../models/resolve-models.js";
 import { chunkTokens } from "../pipeline/chunking.js";
 import {
   advanceCheckpoint,
@@ -47,7 +47,7 @@ export function registerSyncCommand(program: Command) {
     .action(async () => {
       ensureSniffDirs();
       const config = loadConfig();
-      const resolvedModels = await resolveModelPaths(config);
+      const embeddingPath = await resolveEmbeddingPath(config);
       const { sqlite } = createAppDb(config.dbPath);
 
       try {
@@ -89,7 +89,7 @@ export function registerSyncCommand(program: Command) {
           label: "sync",
         });
 
-        const embedder = await createEmbeddingModel(resolvedModels.embeddingPath);
+        const embedder = await createEmbeddingModel(embeddingPath);
         const rawChunkSize = Math.max(1, Math.floor(config.embeddingChunkSize));
         const modelContextSize = Number.isFinite(embedder.trainContextSize)
           ? embedder.trainContextSize

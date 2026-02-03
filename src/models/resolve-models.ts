@@ -8,6 +8,8 @@ export type ResolvedModels = {
   rerankerPath: string;
 };
 
+const downloadCache = new Map<string, Promise<string>>();
+
 function fileExists(filePath: string) {
   try {
     return fs.existsSync(filePath);
@@ -16,23 +18,43 @@ function fileExists(filePath: string) {
   }
 }
 
+function downloadCacheKey(params: { uri: string; dirPath: string; label: string }) {
+  return `${params.label}|${params.dirPath}|${params.uri}`;
+}
+
 async function ensureModelFile(params: {
   uri: string;
   dirPath: string;
   label: string;
 }) {
   ensureSniffDirs();
-  const downloader = await createModelDownloader({
-    modelUri: params.uri,
-    dirPath: params.dirPath,
-    showCliProgress: true,
-  });
-
-  const modelPath = await downloader.download();
-  if (!fileExists(modelPath)) {
-    throw new Error(`${params.label} download failed: ${modelPath}`);
+  const cacheKey = downloadCacheKey(params);
+  const cached = downloadCache.get(cacheKey);
+  if (cached) {
+    return cached;
   }
-  return modelPath;
+
+  const downloadPromise = (async () => {
+    const downloader = await createModelDownloader({
+      modelUri: params.uri,
+      dirPath: params.dirPath,
+      showCliProgress: true,
+    });
+
+    const modelPath = await downloader.download();
+    if (!fileExists(modelPath)) {
+      throw new Error(`${params.label} download failed: ${modelPath}`);
+    }
+    return modelPath;
+  })();
+
+  downloadCache.set(cacheKey, downloadPromise);
+  try {
+    return await downloadPromise;
+  } catch (error) {
+    downloadCache.delete(cacheKey);
+    throw error;
+  }
 }
 
 function requireModelUri(uri: unknown, label: string) {
@@ -56,21 +78,27 @@ async function resolveModelPath(params: {
   return ensureModelFile({ uri, dirPath: params.dirPath, label: params.label });
 }
 
-export async function resolveModelPaths(config: SniffConfig): Promise<ResolvedModels> {
-  const embeddingPath = await resolveModelPath({
+export async function resolveEmbeddingPath(config: SniffConfig): Promise<string> {
+  return resolveModelPath({
     modelPath: config.models.embeddingPath,
     modelUri: config.models.embeddingUri,
     dirPath: config.modelsDir,
     label: "embedding",
   });
+}
 
-  const rerankerPath = await resolveModelPath({
+export async function resolveRerankerPath(config: SniffConfig): Promise<string> {
+  return resolveModelPath({
     modelPath: config.models.rerankerPath,
     modelUri: config.models.rerankerUri,
     dirPath: config.modelsDir,
     label: "reranker",
   });
+}
 
+export async function resolveModelPaths(config: SniffConfig): Promise<ResolvedModels> {
+  const embeddingPath = await resolveEmbeddingPath(config);
+  const rerankerPath = await resolveRerankerPath(config);
   return { embeddingPath, rerankerPath };
 }
 
