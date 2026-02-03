@@ -50,7 +50,7 @@ export function readBearNotes(dbPath: string, sinceMs?: number): BearNote[] {
     if (hasMod) {
       const sample = db
         .prepare("SELECT ZMODIFICATIONDATE as mod FROM ZSFNOTE WHERE ZMODIFICATIONDATE IS NOT NULL LIMIT 1")
-        .get();
+        .get() as { mod?: number } | undefined;
       if (sample && typeof sample.mod === "number" && isLikelyCoreDataSeconds(sample.mod)) {
         useCoreDataSeconds = true;
       }

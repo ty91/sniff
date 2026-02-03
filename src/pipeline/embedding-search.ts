@@ -55,7 +55,9 @@ export async function embeddingSearch(
   limit: number
 ): Promise<RankedItem[]> {
   const queryVector = await model.embed(query);
-  const rows = sqlite.prepare("SELECT note_id as id, vector FROM embeddings").all();
+  const rows = sqlite
+    .prepare("SELECT note_id as id, vector FROM embeddings")
+    .all() as Array<{ id: string; vector: Buffer }>;
 
   const scoredById = new Map<string, number>();
   for (const row of rows) {
