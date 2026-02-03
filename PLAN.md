@@ -65,7 +65,7 @@ sync 진행률 표시(스피너, 카운터) 추가. 중단 후 재시작 복구(
 
 ---
 
-## - [ ] Phase 2: Progress Display
+## - [x] Phase 2: Progress Display
 
 ### Overview
 sync 진행률을 TTY/Non-TTY 환경에 맞게 표시.

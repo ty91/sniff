@@ -14,6 +14,7 @@ import {
   type SyncCheckpoint,
 } from "../sync/checkpoint.js";
 import { needsResync } from "../sync/integrity.js";
+import { createProgressReporter } from "../utils/progress.js";
 
 const MAX_EMBEDDING_CHUNKS = 1000;
 const LAST_SYNC_AT_KEY = "lastSyncAt";
@@ -64,6 +65,29 @@ export function registerSyncCommand(program: Command) {
         const embeddingsCountMap = new Map<string, number>(
           embeddingRows.map((row: any) => [String(row.id), Number(row.count)])
         );
+        const syncPlan = notes.map((note) => {
+          const content = `${note.title}\n\n${note.text}`.trim();
+          const hash = hashContent(content);
+          const hasContent = content.length > 0;
+          const existingHash = existingMap.get(note.id);
+          const embeddingsCount = embeddingsCountMap.get(note.id) ?? 0;
+          const needsProcessing = needsResync({
+            contentHash: hash,
+            existingHash,
+            embeddingsCount,
+            hasContent,
+          });
+          const afterCheckpoint = isAfterCheckpoint(note, checkpoint);
+          return { note, hash, hasContent, needsProcessing, afterCheckpoint };
+        });
+        const candidates = syncPlan.filter(
+          (item) => item.afterCheckpoint || item.needsProcessing
+        );
+        const progress = createProgressReporter({
+          total: candidates.length,
+          interval: 25,
+          label: "sync",
+        });
 
         const embedder = await createEmbeddingModel(resolvedModels.embeddingPath);
         const rawChunkSize = Math.max(1, Math.floor(config.embeddingChunkSize));
@@ -75,7 +99,9 @@ export function registerSyncCommand(program: Command) {
           0,
           Math.min(Math.floor(config.embeddingChunkOverlap), Math.max(0, chunkSize - 1))
         );
+        let processedCount = 0;
         let updatedCount = 0;
+        let skippedCount = 0;
         let currentCheckpoint = checkpoint;
 
         try {
@@ -121,25 +147,11 @@ export function registerSyncCommand(program: Command) {
             setSyncStateStmt.run(LAST_SYNC_ID_KEY, checkpointToWrite.lastSyncId);
           });
 
-          for (const note of notes) {
-            const content = `${note.title}\n\n${note.text}`.trim();
-            const hash = hashContent(content);
-            const hasContent = content.length > 0;
-            const existingHash = existingMap.get(note.id);
-            const embeddingsCount = embeddingsCountMap.get(note.id) ?? 0;
-
-            const needsProcessing = needsResync({
-              contentHash: hash,
-              existingHash,
-              embeddingsCount,
-              hasContent,
-            });
-            const afterCheckpoint = isAfterCheckpoint(note, currentCheckpoint);
-
-            if (!afterCheckpoint && !needsProcessing) continue;
-
+          for (const item of candidates) {
+            const { note, hash, hasContent, needsProcessing } = item;
             const nextCheckpoint = advanceCheckpoint(currentCheckpoint, note);
             if (needsProcessing) {
+              const content = `${note.title}\n\n${note.text}`.trim();
               const embeddings: Array<{ buffer: Buffer; dim: number }> = [];
               if (hasContent) {
                 const tokens = embedder.tokenize(content);
@@ -159,17 +171,32 @@ export function registerSyncCommand(program: Command) {
 
               applyNoteTx(note, hash, embeddings, nextCheckpoint);
               updatedCount += 1;
-            } else if (currentCheckpoint !== nextCheckpoint) {
-              advanceCheckpointTx(nextCheckpoint);
+            } else {
+              if (currentCheckpoint !== nextCheckpoint) {
+                advanceCheckpointTx(nextCheckpoint);
+              }
+              skippedCount += 1;
             }
 
+            processedCount += 1;
+            progress.update({
+              processed: processedCount,
+              total: candidates.length,
+              updated: updatedCount,
+              skipped: skippedCount,
+            });
             currentCheckpoint = nextCheckpoint;
           }
         } finally {
           await embedder.dispose();
         }
 
-        console.log(`synced: ${updatedCount} notes`);
+        progress.finish({
+          processed: processedCount,
+          total: candidates.length,
+          updated: updatedCount,
+          skipped: skippedCount,
+        });
       } finally {
         sqlite.close();
       }
