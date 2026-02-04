@@ -7,6 +7,7 @@ import { rrfMixer } from "../pipeline/rrf-mixer.js";
 import { createReranker, rerankCandidates, type RerankCandidate } from "../pipeline/reranker.js";
 import { selectTopN } from "../pipeline/topn.js";
 import { resolveEmbeddingPath, resolveRerankerPath } from "../models/resolve-models.js";
+import { createVerboseLogger } from "../utils/verbose.js";
 
 function fetchNotesByIds(sqlite: ReturnType<typeof createAppDb>["sqlite"], ids: string[]) {
   if (ids.length === 0) return [];
@@ -27,19 +28,29 @@ export function registerQueryCommand(program: Command) {
     .argument("<query>")
     .option("--output <format>", "md | text | json", "md")
     .option("--top-n <number>", "override topN from config")
+    .option("-v, --verbose", "enable verbose logging")
     .description("Query local RAG index")
-    .action(async (query: string, options: { output: string; topN?: string }) => {
+    .action(
+      async (
+        query: string,
+        options: { output: string; topN?: string; verbose?: boolean }
+      ) => {
       const config = loadConfig();
       const embeddingPath = await resolveEmbeddingPath(config);
       const rerankerPath = await resolveRerankerPath(config);
       const { sqlite } = createAppDb(config.dbPath);
+      const logVerbose = createVerboseLogger(Boolean(options.verbose));
 
       try {
+        logVerbose("config", { ok: 1 });
+        logVerbose("model_paths", { ok: 1 });
+        logVerbose("db_open", { ok: 1 });
         const topN = options.topN ? Number(options.topN) : config.topN;
         const bm25Limit = Math.max(config.rerankTopK * 2, 100);
         const embedLimit = Math.max(config.rerankTopK * 2, 100);
 
         const bm25Results = bm25Search(sqlite, query, bm25Limit);
+        logVerbose("bm25", { count: bm25Results.length, limit: bm25Limit });
 
         const embedder = await createEmbeddingModel(embeddingPath);
         let embeddingResults: { id: string; score: number }[] = [];
@@ -48,10 +59,14 @@ export function registerQueryCommand(program: Command) {
         } finally {
           await embedder.dispose();
         }
+        logVerbose("embedding", { count: embeddingResults.length, limit: embedLimit });
 
         const mixed = rrfMixer([bm25Results, embeddingResults], config.rrfK);
+        logVerbose("rrf_mix", { count: mixed.length, rrfK: config.rrfK });
         const rerankSeed = mixed.slice(0, config.rerankTopK);
+        logVerbose("rerank_seed", { count: rerankSeed.length, limit: config.rerankTopK });
         const notes = fetchNotesByIds(sqlite, rerankSeed.map((item) => item.id));
+        logVerbose("notes", { count: notes.length });
         const noteMap = new Map(notes.map((note) => [note.id, note]));
 
         const candidates: RerankCandidate[] = rerankSeed
@@ -61,6 +76,7 @@ export function registerQueryCommand(program: Command) {
             return { id: note.id, title: note.title, text: note.text, score: item.score };
           })
           .filter(Boolean) as RerankCandidate[];
+        logVerbose("candidates", { count: candidates.length });
 
         const reranker = await createReranker(rerankerPath);
         let reranked: RerankCandidate[] = [];
@@ -69,8 +85,10 @@ export function registerQueryCommand(program: Command) {
         } finally {
           await reranker.dispose();
         }
+        logVerbose("rerank", { count: reranked.length });
 
         const topResults = selectTopN(reranked, topN);
+        logVerbose("topn", { count: topResults.length, limit: topN });
         const output = options.output.toLowerCase();
 
         if (output === "json") {
@@ -88,6 +106,7 @@ export function registerQueryCommand(program: Command) {
               2
             )
           );
+          logVerbose("output", { count: topResults.length });
           return;
         }
 
@@ -95,14 +114,17 @@ export function registerQueryCommand(program: Command) {
           for (const item of topResults) {
             console.log(`${item.score.toFixed(4)}\t${item.title}\t${item.id}`);
           }
+          logVerbose("output", { count: topResults.length });
           return;
         }
 
         for (const item of topResults) {
           console.log(`- ${item.title} (${item.score.toFixed(4)}) — ${item.id}`);
         }
+        logVerbose("output", { count: topResults.length });
       } finally {
         sqlite.close();
       }
-    });
+    }
+  );
 }
