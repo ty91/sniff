@@ -1,4 +1,4 @@
-import { getLlama } from "node-llama-cpp";
+import { getLlama, LlamaLogLevel } from "node-llama-cpp";
 import type { Llama, LlamaModel, LlamaRankingContext } from "node-llama-cpp";
 
 export type RerankCandidate = {
@@ -16,7 +16,7 @@ export type Reranker = {
 };
 
 export async function createReranker(modelPath: string): Promise<Reranker> {
-  const llama: Llama = await getLlama();
+  const llama: Llama = await getLlama({ logLevel: LlamaLogLevel.error });
   const model: LlamaModel = await llama.loadModel({ modelPath });
   const ctx: LlamaRankingContext = await model.createRankingContext();
 

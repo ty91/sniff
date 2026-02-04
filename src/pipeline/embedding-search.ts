@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { getLlama } from "node-llama-cpp";
+import { getLlama, LlamaLogLevel } from "node-llama-cpp";
 import type { Llama, LlamaModel, LlamaEmbeddingContext, Token } from "node-llama-cpp";
 import { RankedItem } from "./bm25-search.js";
 import { makeChunkId } from "../utils/chunk-id.js";
@@ -31,7 +31,7 @@ function bufferToFloat32(buffer: Buffer | Uint8Array) {
 }
 
 export async function createEmbeddingModel(modelPath: string): Promise<EmbeddingModel> {
-  const llama: Llama = await getLlama();
+  const llama: Llama = await getLlama({ logLevel: LlamaLogLevel.error });
   const model: LlamaModel = await llama.loadModel({ modelPath });
   const ctx: LlamaEmbeddingContext = await model.createEmbeddingContext();
 
