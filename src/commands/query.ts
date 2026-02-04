@@ -121,8 +121,8 @@ export function registerQueryCommand(program: Command) {
                   id: item.id,
                   noteId: item.noteId,
                   chunkIndex: item.chunkIndex,
-                  title: item.title,
                   score: item.score,
+                  text: item.text,
                 })),
               },
               null,
@@ -134,16 +134,22 @@ export function registerQueryCommand(program: Command) {
         }
 
         if (output === "text") {
-          for (const item of topResults) {
-            console.log(`${item.score.toFixed(4)}\t${item.title}\t${item.id}`);
-          }
+          topResults.forEach((item, index) => {
+            console.log(`Chunk ${index + 1}:`);
+            console.log(item.text);
+            if (index < topResults.length - 1) console.log("");
+          });
           logVerbose("output", { count: topResults.length });
           return;
         }
 
-        for (const item of topResults) {
-          console.log(`- ${item.title} (${item.score.toFixed(4)}) — ${item.id}`);
-        }
+        topResults.forEach((item, index) => {
+          console.log(`Chunk ${index + 1}:`);
+          console.log("```");
+          console.log(item.text);
+          console.log("```");
+          if (index < topResults.length - 1) console.log("");
+        });
         logVerbose("output", { count: topResults.length });
       } finally {
         sqlite.close();
