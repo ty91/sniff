@@ -3,6 +3,8 @@ import type { Llama, LlamaModel, LlamaRankingContext } from "node-llama-cpp";
 
 export type RerankCandidate = {
   id: string;
+  noteId: string;
+  chunkIndex: number;
   title: string;
   text: string;
   score: number;

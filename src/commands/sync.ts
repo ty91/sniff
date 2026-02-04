@@ -17,6 +17,7 @@ import { needsResync } from "../sync/integrity.js";
 import { createProgressReporter } from "../utils/progress.js";
 
 const MAX_EMBEDDING_CHUNKS = 1000;
+const DETOKENIZER_TRAIL_SIZE = 3;
 const LAST_SYNC_AT_KEY = "lastSyncAt";
 const LAST_SYNC_ID_KEY = "lastSyncId";
 
@@ -110,7 +111,7 @@ export function registerSyncCommand(program: Command) {
           );
           const deleteFtsStmt = sqlite.prepare("DELETE FROM notes_fts WHERE note_id = ?");
           const insertFtsStmt = sqlite.prepare(
-            "INSERT INTO notes_fts(note_id, title, text) VALUES (?, ?, ?)"
+            "INSERT INTO notes_fts(note_id, chunk_index, text) VALUES (?, ?, ?)"
           );
           const deleteEmbeddingsStmt = sqlite.prepare("DELETE FROM embeddings WHERE note_id = ?");
           const insertEmbeddingStmt = sqlite.prepare(
@@ -125,11 +126,14 @@ export function registerSyncCommand(program: Command) {
               note: (typeof notes)[number],
               hash: string,
               embeddings: Array<{ buffer: Buffer; dim: number }>,
+              chunkTexts: string[],
               checkpointToWrite: SyncCheckpoint
             ) => {
               insertNoteStmt.run(note.id, note.title, note.text, note.updatedAt, hash);
               deleteFtsStmt.run(note.id);
-              insertFtsStmt.run(note.id, note.title, note.text);
+              for (let i = 0; i < chunkTexts.length; i += 1) {
+                insertFtsStmt.run(note.id, i, chunkTexts[i] ?? "");
+              }
 
               deleteEmbeddingsStmt.run(note.id);
               for (let i = 0; i < embeddings.length; i += 1) {
@@ -153,6 +157,7 @@ export function registerSyncCommand(program: Command) {
             if (needsProcessing) {
               const content = `${note.title}\n\n${note.text}`.trim();
               const embeddings: Array<{ buffer: Buffer; dim: number }> = [];
+              const chunkTexts: string[] = [];
               if (hasContent) {
                 const tokens = embedder.tokenize(content);
                 const chunked = chunkTokens(tokens, chunkSize, chunkOverlap, MAX_EMBEDDING_CHUNKS);
@@ -166,10 +171,21 @@ export function registerSyncCommand(program: Command) {
                   const vector = await embedder.embed(chunked.chunks[i]);
                   const buffer = Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength);
                   embeddings.push({ buffer, dim: vector.length });
+                  const chunkStart = chunked.chunkStarts[i] ?? 0;
+                  const lastTokens =
+                    chunkStart > 0
+                      ? tokens.slice(Math.max(0, chunkStart - DETOKENIZER_TRAIL_SIZE), chunkStart)
+                      : undefined;
+                  const chunkText = embedder.detokenize(
+                    chunked.chunks[i],
+                    false,
+                    lastTokens
+                  );
+                  chunkTexts.push(chunkText);
                 }
               }
 
-              applyNoteTx(note, hash, embeddings, nextCheckpoint);
+              applyNoteTx(note, hash, embeddings, chunkTexts, nextCheckpoint);
               updatedCount += 1;
             } else {
               if (currentCheckpoint !== nextCheckpoint) {

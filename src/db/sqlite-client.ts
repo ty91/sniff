@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS notes (
 
 CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
   note_id UNINDEXED,
-  title,
+  chunk_index UNINDEXED,
   text
 );
 

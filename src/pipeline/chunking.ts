@@ -2,6 +2,7 @@ import type { Token } from "node-llama-cpp";
 
 export type ChunkTokensResult = {
   chunks: Token[][];
+  chunkStarts: number[];
   totalTokens: number;
   truncated: boolean;
   chunkSize: number;
@@ -28,6 +29,7 @@ export function chunkTokens(
   if (totalTokens === 0) {
     return {
       chunks: [tokens],
+      chunkStarts: [0],
       totalTokens,
       truncated: false,
       chunkSize: safeChunkSize,
@@ -38,6 +40,7 @@ export function chunkTokens(
   if (totalTokens <= safeChunkSize) {
     return {
       chunks: [tokens],
+      chunkStarts: [0],
       totalTokens,
       truncated: false,
       chunkSize: safeChunkSize,
@@ -46,6 +49,7 @@ export function chunkTokens(
   }
 
   const chunks: Token[][] = [];
+  const chunkStarts: number[] = [];
   let truncated = false;
   let index = 0;
 
@@ -56,12 +60,14 @@ export function chunkTokens(
     }
 
     chunks.push(tokens.slice(index, index + safeChunkSize));
+    chunkStarts.push(index);
     if (index + safeChunkSize >= totalTokens) break;
     index += step;
   }
 
   return {
     chunks,
+    chunkStarts,
     totalTokens,
     truncated,
     chunkSize: safeChunkSize,

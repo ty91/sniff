@@ -8,15 +8,29 @@ import { createReranker, rerankCandidates, type RerankCandidate } from "../pipel
 import { selectTopN } from "../pipeline/topn.js";
 import { resolveEmbeddingPath, resolveRerankerPath } from "../models/resolve-models.js";
 import { createVerboseLogger } from "../utils/verbose.js";
+import { makeChunkId, parseChunkId } from "../utils/chunk-id.js";
 
-function fetchNotesByIds(sqlite: ReturnType<typeof createAppDb>["sqlite"], ids: string[]) {
+function fetchChunksByIds(sqlite: ReturnType<typeof createAppDb>["sqlite"], ids: string[]) {
   if (ids.length === 0) return [];
-  const placeholders = ids.map(() => "?").join(",");
+  const refs = ids.map((id) => parseChunkId(id)).filter(Boolean) as Array<{
+    noteId: string;
+    chunkIndex: number;
+  }>;
+  if (refs.length === 0) return [];
+  const placeholders = refs.map(() => "(?, ?)").join(",");
+  const params = refs.flatMap((ref) => [ref.noteId, ref.chunkIndex]);
   const rows = sqlite
-    .prepare(`SELECT id, title, text FROM notes WHERE id IN (${placeholders})`)
-    .all(...ids);
+    .prepare(
+      `SELECT n.id as note_id, n.title as title, f.chunk_index as chunk_index, f.text as text
+       FROM notes_fts f
+       JOIN notes n ON n.id = f.note_id
+       WHERE (f.note_id, f.chunk_index) IN (${placeholders})`
+    )
+    .all(...params);
   return rows.map((row: any) => ({
-    id: String(row.id),
+    id: makeChunkId(String(row.note_id), Number(row.chunk_index)),
+    noteId: String(row.note_id),
+    chunkIndex: Number(row.chunk_index),
     title: row.title ? String(row.title) : "",
     text: row.text ? String(row.text) : "",
   }));
@@ -65,15 +79,22 @@ export function registerQueryCommand(program: Command) {
         logVerbose("rrf_mix", { count: mixed.length, rrfK: config.rrfK });
         const rerankSeed = mixed.slice(0, config.rerankTopK);
         logVerbose("rerank_seed", { count: rerankSeed.length, limit: config.rerankTopK });
-        const notes = fetchNotesByIds(sqlite, rerankSeed.map((item) => item.id));
-        logVerbose("notes", { count: notes.length });
-        const noteMap = new Map(notes.map((note) => [note.id, note]));
+        const chunks = fetchChunksByIds(sqlite, rerankSeed.map((item) => item.id));
+        logVerbose("chunks", { count: chunks.length });
+        const chunkMap = new Map(chunks.map((chunk) => [chunk.id, chunk]));
 
         const candidates: RerankCandidate[] = rerankSeed
           .map((item) => {
-            const note = noteMap.get(item.id);
-            if (!note) return null;
-            return { id: note.id, title: note.title, text: note.text, score: item.score };
+            const chunk = chunkMap.get(item.id);
+            if (!chunk) return null;
+            return {
+              id: chunk.id,
+              noteId: chunk.noteId,
+              chunkIndex: chunk.chunkIndex,
+              title: chunk.title,
+              text: chunk.text,
+              score: item.score,
+            };
           })
           .filter(Boolean) as RerankCandidate[];
         logVerbose("candidates", { count: candidates.length });
@@ -98,6 +119,8 @@ export function registerQueryCommand(program: Command) {
                 query,
                 results: topResults.map((item) => ({
                   id: item.id,
+                  noteId: item.noteId,
+                  chunkIndex: item.chunkIndex,
                   title: item.title,
                   score: item.score,
                 })),
