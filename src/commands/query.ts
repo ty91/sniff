@@ -112,12 +112,14 @@ export function registerQueryCommand(program: Command) {
         logVerbose("topn", { count: topResults.length, limit: topN });
         const output = options.output.toLowerCase();
 
+        const filteredResults = topResults.filter((item) => item.text.trim().length > 0);
+
         if (output === "json") {
           console.log(
             JSON.stringify(
               {
                 query,
-                results: topResults.map((item) => ({
+                results: filteredResults.map((item) => ({
                   id: item.id,
                   noteId: item.noteId,
                   chunkIndex: item.chunkIndex,
@@ -129,28 +131,28 @@ export function registerQueryCommand(program: Command) {
               2
             )
           );
-          logVerbose("output", { count: topResults.length });
+          logVerbose("output", { count: filteredResults.length });
           return;
         }
 
         if (output === "text") {
-          topResults.forEach((item, index) => {
+          filteredResults.forEach((item, index) => {
             console.log(`Chunk ${index + 1}:`);
             console.log(item.text);
-            if (index < topResults.length - 1) console.log("");
+            if (index < filteredResults.length - 1) console.log("");
           });
-          logVerbose("output", { count: topResults.length });
+          logVerbose("output", { count: filteredResults.length });
           return;
         }
 
-        topResults.forEach((item, index) => {
+        filteredResults.forEach((item, index) => {
           console.log(`Chunk ${index + 1}:`);
           console.log("```");
           console.log(item.text);
           console.log("```");
-          if (index < topResults.length - 1) console.log("");
+          if (index < filteredResults.length - 1) console.log("");
         });
-        logVerbose("output", { count: topResults.length });
+        logVerbose("output", { count: filteredResults.length });
       } finally {
         sqlite.close();
       }
